@@ -1,0 +1,94 @@
+/* Módulo que gera os sinais de sincronização */
+module vga_adaptador(clk, vga_h_sync, vga_v_sync, inDisplayArea, CounterX, CounterY);
+input clk;
+output vga_h_sync, vga_v_sync;
+output inDisplayArea;
+output [9:0] CounterX; /* max: 768 - gera 60.0Mgz */
+output [8:0] CounterY; /* max: 512 - gera 31.5Mgz */
+
+reg [9:0] CounterX;
+reg [8:0] CounterY;
+//wire CounterXmaxed = (CounterX==10'h2FF);
+wire CounterXmaxed = (CounterX==10'd767);
+
+always @(posedge clk)
+if(CounterXmaxed)
+	CounterX <= 0;
+else
+	CounterX <= CounterX + 1;
+
+always @(posedge clk)
+if(CounterXmaxed) CounterY <= CounterY + 1;
+
+reg	VGA_HS, VGA_VS;
+/* Flip D pra evitar glitch */
+always @(posedge clk)
+begin
+	//vga_HS <= (CounterX[9:4]==6'h2D); // change this value to move the display horizontally
+	VGA_HS <= (CounterX[9:4]==6'd45); // change this value to move the display horizontally
+	VGA_VS <= (CounterY==500); // change this value to move the display vertically
+end
+
+/* Utiliza os próprios CounterX e CounterY para
+*  dizer se estamos na área a ser mostrada (640 x 480)
+*/
+reg inDisplayArea;
+always @(posedge clk)
+if(inDisplayArea==0)
+    /* true se contou tudo e y < 480 */
+	inDisplayArea <= (CounterXmaxed) && (CounterY<480);
+else
+    /* true se contou tudo e y < 480 */
+	inDisplayArea <= !(CounterX==639);
+	
+assign vga_h_sync = ~VGA_HS;
+assign vga_v_sync = ~VGA_VS;
+
+endmodule
+  
+/*
+ * MAIN
+ *
+ */
+module vga(CLOCK_50, vga_h_sync, vga_v_sync, VGA_R, VGA_G, VGA_B);
+input CLOCK_50; 
+/* VER as dimensões disso.
+* Usar Counter(X e Y) ou resolução? */
+
+ (* ram_init_file = "tela2.mif" *) reg MIF_IMAGE [20:0];
+  /* saídas da vga */
+output wire vga_h_sync, vga_v_sync;
+output reg VGA_R, VGA_G, VGA_B;
+
+wire inDisplayArea;
+wire [9:0] CounterX;
+wire [8:0] CounterY;
+
+vga_adaptador gera_sync(
+     CLOCK_50,
+     vga_h_sync,
+     vga_v_sync,
+     inDisplayArea,
+     CounterX,
+     CounterY
+ );
+ 
+ reg R, G, B ;
+ always @(posedge CLOCK_50) 
+ begin
+     if(inDisplayArea) begin /* ai não da overflow no vetor */
+          R = MIF_IMAGE[CounterX + 640*CounterY]; 
+          G = MIF_IMAGE[CounterX + 640*CounterY]; 
+          B = MIF_IMAGE[CounterX + 640*CounterY]; 
+        //R = MIF_IMAGE[CounterX][CounterY] ;
+		//G = MIF_IMAGE[CounterX][CounterY] ;
+        //B = MIF_IMAGE[CounterX][CounterY] ;
+      end
+       	
+     VGA_R <= R & inDisplayArea;
+     VGA_G <= G & inDisplayArea;
+     VGA_B <= B & inDisplayArea;
+ end
+
+ endmodule
+ 
